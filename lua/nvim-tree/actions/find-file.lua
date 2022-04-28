@@ -4,6 +4,7 @@ local view = require "nvim-tree.view"
 local utils = require "nvim-tree.utils"
 local renderer = require "nvim-tree.renderer"
 local core = require "nvim-tree.core"
+local change_dir = require "nvim-tree.actions.change-dir"
 
 local M = {}
 
@@ -68,6 +69,7 @@ function M.fn(fname)
   end
   if index and view.is_visible() then
     view.set_cursor { index, 0 }
+    change_dir.fn(vim.fn.fnamemodify(fname, ":p:h"))
   end
   running[fname] = false
 
