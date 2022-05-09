@@ -25,7 +25,8 @@ use {
     'kyazdani42/nvim-tree.lua',
     requires = {
       'kyazdani42/nvim-web-devicons', -- optional, for file icon
-    }
+    },
+    tag = 'nightly' -- optional, updated every week. (see issue #1193)
 }
 ```
 
@@ -114,6 +115,7 @@ require'nvim-tree'.setup {
 
 -- setup with all defaults
 -- each of these are documented in `:help nvim-tree.OPTION_NAME`
+-- nested options are documented by accessing them with `.` (eg: `:help nvim-tree.view.mappings.list`).
 require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
   auto_reload_on_write = true,
   disable_netrw = false,
@@ -153,7 +155,8 @@ require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
     },
     icons = {
       webdev_colors = true,
-    },
+      git_placement = "before",
+    }
   },
   hijack_directories = {
     enable = true,

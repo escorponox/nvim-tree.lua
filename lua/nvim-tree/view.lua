@@ -27,7 +27,8 @@ M.View = {
       "EndOfBuffer:NvimTreeEndOfBuffer",
       "Normal:NvimTreeNormal",
       "CursorLine:NvimTreeCursorLine",
-      "VertSplit:NvimTreeVertSplit",
+      -- #1221 WinSeparator not present in nvim 0.6.1 and some builds of 0.7.0
+      pcall(vim.cmd, "silent hi WinSeparator") and "WinSeparator:NvimTreeWinSeparator" or "VertSplit:NvimTreeWinSeparator",
       "StatusLine:NvimTreeStatusLine",
       "StatusLineNC:NvimTreeStatuslineNC",
       "SignColumn:NvimTreeSignColumn",
@@ -47,7 +48,6 @@ local tabinitial = {
 }
 
 local BUFNR_PER_TAB = {}
-local LAST_FOCUSED_WIN = nil
 local BUFFER_OPTIONS = {
   swapfile = false,
   buftype = "nofile",
@@ -173,8 +173,9 @@ function M.close()
   for _, win in pairs(a.nvim_list_wins()) do
     if tree_win ~= win and a.nvim_win_get_config(win).relative == "" then
       a.nvim_win_close(tree_win, true)
-      if tree_win == current_win and LAST_FOCUSED_WIN then
-        a.nvim_set_current_win(LAST_FOCUSED_WIN)
+      local prev_win = vim.fn.winnr "#" -- this tab only
+      if tree_win == current_win and prev_win > 0 then
+        a.nvim_set_current_win(vim.fn.win_getid(prev_win))
       end
       events._dispatch_on_tree_close()
       return
@@ -187,7 +188,6 @@ function M.open(options)
     return
   end
 
-  LAST_FOCUSED_WIN = a.nvim_get_current_win()
   create_buffer()
   open_window()
   set_window_options_and_buffer()

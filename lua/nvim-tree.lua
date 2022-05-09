@@ -351,6 +351,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
     },
     icons = {
       webdev_colors = true,
+      git_placement = "before",
     },
   },
   hijack_directories = {
@@ -426,10 +427,6 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
 } -- END_DEFAULT_OPTS
 
 local function merge_options(conf)
-  if conf and conf.update_to_buf_dir then
-    conf.hijack_directories = conf.update_to_buf_dir
-    conf.update_to_buf_dir = nil
-  end
   return vim.tbl_deep_extend("force", DEFAULT_OPTS, conf or {})
 end
 

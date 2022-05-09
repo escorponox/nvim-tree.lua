@@ -1,6 +1,5 @@
 local utils = require "nvim-tree.utils"
 local view = require "nvim-tree.view"
-local diagnostics = require "nvim-tree.diagnostics"
 local renderer = require "nvim-tree.renderer"
 local core = require "nvim-tree.core"
 local lib = require "nvim-tree.lib"
@@ -36,6 +35,11 @@ end
 
 function M.parent_node(should_close)
   return function(node)
+    if should_close and node.open then
+      node.open = false
+      return renderer.draw()
+    end
+
     local parent = node.parent
 
     if not parent or parent.cwd then
@@ -49,7 +53,6 @@ function M.parent_node(should_close)
     view.set_cursor { line + 1, 0 }
     if should_close then
       parent.open = false
-      diagnostics.update()
       renderer.draw()
     end
   end
