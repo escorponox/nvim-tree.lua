@@ -32,7 +32,7 @@ local function add_sign(linenr, severity)
     return
   end
   local sign_name = sign_names[severity][1]
-  vim.fn.sign_place(1, GROUP, sign_name, buf, { lnum = linenr })
+  vim.fn.sign_place(0, GROUP, sign_name, buf, { lnum = linenr, priority = 2 })
 end
 
 local function from_nvim_lsp()
@@ -169,8 +169,13 @@ function M.setup(opts)
 
   if M.enable then
     log.line("diagnostics", "setup")
-    vim.cmd "au DiagnosticChanged * lua require'nvim-tree.diagnostics'.update()"
-    vim.cmd "au User CocDiagnosticChange lua require'nvim-tree.diagnostics'.update()"
+    a.nvim_create_autocmd("DiagnosticChanged", {
+      callback = M.update,
+    })
+    a.nvim_create_autocmd("User", {
+      pattern = "CocDiagnosticChange",
+      callback = M.update,
+    })
   end
 end
 
