@@ -14,6 +14,7 @@ function Builder.new(root_cwd)
     highlights = {},
     lines = {},
     markers = {},
+    signs = {},
     root_cwd = root_cwd,
   }, Builder)
 end
@@ -43,6 +44,12 @@ function Builder:configure_picture_map(picture_map)
   return self
 end
 
+function Builder:configure_filter(filter, prefix)
+  self.filter_prefix = prefix
+  self.filter = filter
+  return self
+end
+
 function Builder:configure_opened_file_highlighting(level)
   if level == 1 then
     self.open_file_highlight = "icon"
@@ -61,9 +68,11 @@ function Builder:configure_git_icons_padding(padding)
 end
 
 function Builder:configure_git_icons_placement(where)
-  where = where or "before"
-  self.is_git_before = where == "before"
-  self.is_git_after = not self.is_git_before
+  if where == "signcolumn" then
+    vim.fn.sign_unplace(git.SIGN_GROUP)
+    self.is_git_sign = true
+  end
+  self.is_git_after = where == "after" and not self.is_git_sign
   return self
 end
 
@@ -91,10 +100,11 @@ function Builder:_unwrap_git_data(git_icons_and_hl_groups, offset)
   end
 
   local icon = ""
-  for _, v in ipairs(git_icons_and_hl_groups) do
+  for i, v in ipairs(git_icons_and_hl_groups) do
     if #v.icon > 0 then
       self:_insert_highlight(v.hl, offset + #icon, offset + #icon + #v.icon)
-      icon = icon .. v.icon .. self.git_icon_padding
+      local remove_padding = self.is_git_after and i == #git_icons_and_hl_groups
+      icon = icon .. v.icon .. (remove_padding and "" or self.git_icon_padding)
     end
   end
   return icon
@@ -109,7 +119,7 @@ function Builder:_build_folder(node, padding, git_hl, git_icons_tbl)
 
   local foldername = name .. self.trailing_slash
   local git_icons = self:_unwrap_git_data(git_icons_tbl, offset + #icon + (self.is_git_after and #foldername + 1 or 0))
-  local fname_starts_at = offset + #icon + (self.is_git_before and #git_icons or 0)
+  local fname_starts_at = offset + #icon + (self.is_git_after and 0 or #git_icons)
   local line = self:_format_line(padding .. icon, foldername, git_icons)
   self:_insert_line(line)
 
@@ -134,8 +144,9 @@ function Builder:_build_folder(node, padding, git_hl, git_icons_tbl)
 end
 
 function Builder:_format_line(before, after, git_icons)
+  git_icons = self.is_git_after and git_icons and " " .. git_icons or git_icons
   return string.format(
-    "%s%s%s %s",
+    "%s%s%s%s",
     before,
     self.is_git_after and "" or git_icons,
     after,
@@ -216,8 +227,8 @@ function Builder:_build_file(node, padding, git_highlight, git_icons_tbl)
   end
 end
 
-function Builder:_build_line(tree, node, idx)
-  local padding = pad.get_padding(self.depth, idx, tree, node, self.markers)
+function Builder:_build_line(node, idx, num_children)
+  local padding = pad.get_padding(self.depth, idx, num_children, node, self.markers)
 
   if self.depth > 0 then
     self:_insert_highlight("NvimTreeIndentMarker", 0, string.len(padding))
@@ -225,6 +236,12 @@ function Builder:_build_line(tree, node, idx)
 
   local git_highlight = git.get_highlight(node)
   local git_icons_tbl = git.get_icons(node)
+
+  if self.is_git_sign and git_icons_tbl and #git_icons_tbl > 0 then
+    local git_info = git_icons_tbl[1]
+    table.insert(self.signs, { sign = git_info.hl, lnum = self.index + 1 })
+    git_icons_tbl = {}
+  end
 
   local is_folder = node.nodes ~= nil
   local is_symlink = node.link_to ~= nil
@@ -245,9 +262,28 @@ function Builder:_build_line(tree, node, idx)
   end
 end
 
+function Builder:_get_nodes_number(nodes)
+  if not self.filter then
+    return #nodes
+  end
+
+  local i = 0
+  for _, n in pairs(nodes) do
+    if not n.hidden then
+      i = i + 1
+    end
+  end
+  return i
+end
+
 function Builder:build(tree)
-  for idx, node in ipairs(tree.nodes) do
-    self:_build_line(tree, node, idx)
+  local num_children = self:_get_nodes_number(tree.nodes)
+  local idx = 1
+  for _, node in ipairs(tree.nodes) do
+    if not node.hidden then
+      self:_build_line(node, idx, num_children)
+      idx = idx + 1
+    end
   end
 
   return self
@@ -266,11 +302,20 @@ function Builder:build_header(show_header)
     self.index = 1
   end
 
+  if self.filter then
+    local filter_line = self.filter_prefix .. "/" .. self.filter .. "/"
+    self:_insert_line(filter_line)
+    local prefix_length = string.len(self.filter_prefix)
+    self:_insert_highlight("NvimTreeLiveFilterPrefix", 0, prefix_length)
+    self:_insert_highlight("NvimTreeLiveFilterValue", prefix_length, string.len(filter_line))
+    self.index = self.index + 1
+  end
+
   return self
 end
 
 function Builder:unwrap()
-  return self.lines, self.highlights
+  return self.lines, self.highlights, self.signs
 end
 
 return Builder

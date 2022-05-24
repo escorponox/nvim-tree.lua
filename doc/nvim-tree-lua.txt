@@ -31,7 +31,7 @@ closes the tree
 
 |:NvimTreeToggle| 	                          *:NvimTreeToggle*
 
-open or close the tree
+open or close the tree. Takes an optional path argument.
 
 |:NvimTreeFocus| 	                          *:NvimTreeFocus*
 
@@ -52,7 +52,8 @@ It will also open the leafs of the tree leading to the file in the buffer
 |:NvimTreeFindFileToggle|			  *:NvimTreeFindFileToggle*
 
 close the tree or change the cursor in the tree for the current bufname,
-similar to combination of |:NvimTreeToggle| and |:NvimTreeFindFile|
+similar to combination of |:NvimTreeToggle| and |:NvimTreeFindFile|. Takes an
+optional path argument.
 
 |:NvimTreeClipboard|			          *:NvimTreeClipboard*
 
@@ -96,6 +97,7 @@ Values may be functions. Warning: this may result in unexpected behaviour.
       open_on_tab = false,
       sort_by = "name",
       update_cwd = false,
+      reload_on_bufenter = false,
       view = {
         width = 30,
         height = 30,
@@ -124,7 +126,7 @@ Values may be functions. Warning: this may result in unexpected behaviour.
         icons = {
           webdev_colors = true,
           git_placement = "before",
-        }
+        },
       },
       hijack_directories = {
         enable = true,
@@ -169,7 +171,7 @@ Values may be functions. Warning: this may result in unexpected behaviour.
         },
         open_file = {
           quit_on_open = false,
-          resize_window = false,
+          resize_window = true,
           window_picker = {
             enable = true,
             chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
@@ -183,6 +185,10 @@ Values may be functions. Warning: this may result in unexpected behaviour.
       trash = {
         cmd = "trash",
         require_confirm = true,
+      },
+      live_filter = {
+        prefix = "[FILTER]: ",
+        always_show_folders = true,
       },
       log = {
         enable = false,
@@ -228,7 +234,7 @@ Will ignore the buffer, when deciding to open the tree on setup.
   Type: `boolean`, Default: `false`
 
 *nvim-tree.ignore_ft_on_setup*
-List of filetypes that will make `open_on_setup` not open. 
+List of filetypes that will make `open_on_setup` not open.
 You can use this option if you don't want the tree to open
 in some scenarios (eg using vim startify).
   Type: {string}, Default: {}
@@ -244,7 +250,7 @@ if the tree was previously open.
 
 *nvim-tree.sort_by*
 Changes how files within the same directory are sorted.
-Can be one of 'name', 'case_sensitive' or 'modification_time'.
+Can be one of 'name', 'case_sensitive', 'modification_time' or 'extension'.
   Type: `string`, Default: `"name"`
 
 *nvim-tree.hijack_unnamed_buffer_when_opening*
@@ -257,6 +263,10 @@ Keeps the cursor on the first letter of the filename when moving in the tree.
 
 *nvim-tree.update_cwd*
 Changes the tree root directory on `DirChanged` and refreshes the tree.
+  Type: `boolean`, Default: `false`
+
+*nvim-tree.reload_on_bufenter*
+Automatically reloads the tree on `BufEnter` nvim-tree.
   Type: `boolean`, Default: `false`
 
 *nvim-tree.hijack_directories*
@@ -402,7 +412,7 @@ Window / buffer setup.
       	Will use only the provided user mappings and not the default otherwise,
       	extends the default mappings with the provided user mappings.
       	  Type: `boolean`, Default: `false`
-  
+
 	*nvim-tree.view.mappings.list*
 	A list of keymaps that will extend or override the default keymaps.
 	  Type: list of { key: table of strings or string, mode: string (vim-mode), cb: callback function as a string }
@@ -432,7 +442,10 @@ UI rendering setup
 	*nvim-tree.renderer.icons.git_placement*
 	Place where the git icons will be rendered.
 	After or before the `filename` (after the file/folders icons).
-	  Type: `after` or `before`, Default: `before`
+	When placed in the signcolumn, the value of signcolumn should be `yes`
+	for the nvim-tree window.
+	Note that the diagnostic signs will take precedence over the git signs.
+	  Type: `after`, `before` or `signcolumn`, Default: `before`
 
 *nvim-tree.filters*
 Filtering options.
@@ -487,7 +500,7 @@ Configuration for various actions.
 
     *nvim-tree.actions.open_file.resize_window*
     Resizes the tree when opening a file.
-      Type: `boolean`, Default: `false`
+      Type: `boolean`, Default: `true`
 
     *nvim-tree.actions.open_file.window_picker*
     Window picker configuration.
@@ -516,6 +529,20 @@ Configuration for various actions.
     '+' (system), otherwise, it will be stored in '1' and '"'.
       Type: `boolean`, Default: `true`
 
+*nvim-tree.live_filter*
+Configurations for the live_filtering feature.
+The live filter allows you to filter the tree nodes dynamically, based on
+regex matching (see |vim.regex|).
+This feature is bound to the `f` key by default.
+The filter can be cleared with the `F` key by default.
+
+    *nvim-tree.live_filter.prefix*
+    Prefix of the filter displayed in the buffer.
+      Type: `string`, Default: `"[FILTER]: "`
+
+    *nvim-tree.live_filter.always_show_folders*
+    Wether to filter folders or not.
+      Type: `boolean`, Default: `true`
 
 *nvim-tree.log*
 Configuration for diagnostic logging.
@@ -761,6 +788,8 @@ Defaults to:
       { key = "]c",                           action = "next_git_item" },
       { key = "-",                            action = "dir_up" },
       { key = "s",                            action = "system_open" },
+      { key = "f",                            action = "live_filter" },
+      { key = "F",                            action = "clear_live_filter" },
       { key = "q",                            action = "close" },
       { key = "g?",                           action = "toggle_help" },
       { key = 'W',                            action = "collapse_all" },
@@ -770,6 +799,7 @@ Defaults to:
       { key = "U",                            action = "toggle_custom" },
     }
 <
+
 The `list` option in `view.mappings.list` is a table of
 
 - key can be either a string or a table of string (lhs)
@@ -875,6 +905,11 @@ NvimTreeFileMerge
 NvimTreeFileRenamed
 NvimTreeFileNew
 NvimTreeFileDeleted
+
+There are 2 highlight groups for the live filter feature
+
+NvimTreeLiveFilterPrefix
+NvimTreeLiveFilterValue
 
 ==============================================================================
 vinegar style                                         *nvim-tree-vinegar*

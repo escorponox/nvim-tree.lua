@@ -52,6 +52,8 @@ local function get_hl_groups()
     GitNew = { fg = colors.yellow },
 
     WindowPicker = { gui = "bold", fg = "#ebdbb2", bg = "#458588" },
+    LiveFilterPrefix = { gui = "bold", fg = colors.purple },
+    LiveFilterValue = { gui = "bold", fg = "#fff" },
   }
 end
 

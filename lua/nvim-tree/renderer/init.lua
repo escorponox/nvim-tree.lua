@@ -8,6 +8,7 @@ local icon_component = require "nvim-tree.renderer.components.icons"
 local help = require "nvim-tree.renderer.help"
 local git = require "nvim-tree.renderer.components.git"
 local Builder = require "nvim-tree.renderer.builder"
+local live_filter = require "nvim-tree.live-filter"
 
 local api = vim.api
 
@@ -17,11 +18,14 @@ local M = {
 
 local namespace_id = api.nvim_create_namespace "NvimTreeHighlights"
 
-local function _draw(bufnr, lines, hl)
+local function _draw(bufnr, lines, hl, signs)
   api.nvim_buf_set_option(bufnr, "modifiable", true)
   api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
   M.render_hl(bufnr, hl)
   api.nvim_buf_set_option(bufnr, "modifiable", false)
+  for _, sign in pairs(signs) do
+    vim.fn.sign_place(0, git.SIGN_GROUP, sign.sign, bufnr, { lnum = sign.lnum, priority = 1 })
+  end
 end
 
 function M.render_hl(bufnr, hl)
@@ -71,10 +75,11 @@ function M.draw()
   git.reload()
 
   local lines, hl
+  local signs = {}
   if view.is_help_ui() then
     lines, hl = help.compute_lines()
   else
-    lines, hl = Builder.new(core.get_cwd())
+    lines, hl, signs = Builder.new(core.get_cwd())
       :configure_initial_depth(should_show_arrows())
       :configure_root_modifier(vim.g.nvim_tree_root_folder_modifier)
       :configure_trailing_slash(vim.g.nvim_tree_add_trailing == 1)
@@ -83,12 +88,14 @@ function M.draw()
       :configure_opened_file_highlighting(vim.g.nvim_tree_highlight_opened_files)
       :configure_git_icons_padding(vim.g.nvim_tree_icon_padding)
       :configure_git_icons_placement(M.config.icons.git_placement)
+      :configure_filter(live_filter.filter, live_filter.prefix)
       :build_header(view.is_root_folder_visible(core.get_cwd()))
       :build(core.get_explorer())
       :unwrap()
   end
 
-  _draw(bufnr, lines, hl)
+  _draw(bufnr, lines, hl, signs)
+
   M.last_highlights = hl
 
   if cursor and #lines >= cursor[1] then
@@ -111,6 +118,7 @@ function M.setup(opts)
   }
 
   _padding.setup(opts)
+  git.setup_signs()
 end
 
 return M

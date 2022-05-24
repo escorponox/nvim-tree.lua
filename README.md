@@ -4,7 +4,7 @@
 
 ## Notice
 
-This plugin requires [neovim >=0.6.0](https://github.com/neovim/neovim/wiki/Installing-Neovim).
+This plugin requires [neovim >=0.7.0](https://github.com/neovim/neovim/wiki/Installing-Neovim).
 
 If you have issues since the recent setup migration, check out [this guide](https://github.com/kyazdani42/nvim-tree.lua/issues/674)
 
@@ -128,6 +128,7 @@ require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
   open_on_tab = false,
   sort_by = "name",
   update_cwd = false,
+  reload_on_bufenter = false,
   view = {
     width = 30,
     height = 30,
@@ -156,7 +157,7 @@ require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
     icons = {
       webdev_colors = true,
       git_placement = "before",
-    }
+    },
   },
   hijack_directories = {
     enable = true,
@@ -201,7 +202,7 @@ require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
     },
     open_file = {
       quit_on_open = false,
-      resize_window = false,
+      resize_window = true,
       window_picker = {
         enable = true,
         chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
@@ -215,6 +216,10 @@ require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
   trash = {
     cmd = "trash",
     require_confirm = true,
+  },
+  live_filter = {
+    prefix = "[FILTER]: ",
+    always_show_folders = true,
   },
   log = {
     enable = false,
@@ -269,6 +274,7 @@ require'nvim-tree'.setup { -- BEGIN_DEFAULT_OPTS
 - `S` will prompt the user to enter a path and then expands the tree to match the path
 - `.` will enter vim command mode with the file the cursor is on
 - `C-k` will toggle a popup with file infos about the file under the cursor
+- `f` will allow you to filter nodes dynamically based on regex matching.
 
 ### Settings
 
@@ -330,6 +336,8 @@ local list = {
   { key = "]c",                           action = "next_git_item" },
   { key = "-",                            action = "dir_up" },
   { key = "s",                            action = "system_open" },
+  { key = "f",                            action = "live_filter" },
+  { key = "F",                            action = "clear_live_filter" },
   { key = "q",                            action = "close" },
   { key = "g?",                           action = "toggle_help" },
   { key = "W",                            action = "collapse_all" },
@@ -376,7 +384,7 @@ Please attach `$XDG_CACHE_HOME/nvim/nvim-tree.log` if you raise an issue.
 
 *Performance Tips:*
 
-* If you are using fish as an editor shell (which might be fixed in the future), try set `shell=/bin/bash` in your vim config.
+* If you are using fish as an editor shell (which might be fixed in the future), try set `shell=/bin/bash` in your vim config. Alternatively, you can [prevent fish from loading interactive configuration in a non-interactive shell](https://github.com/kyazdani42/nvim-tree.lua/issues/549#issuecomment-1127394585).
 
 * Try manually running the git command (see the logs) in your shell e.g. `git --no-optional-locks status --porcelain=v1 --ignored=matching -u`.
 
