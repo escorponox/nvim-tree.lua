@@ -16,7 +16,9 @@ local collapse_all = require "nvim-tree.actions.collapse-all"
 
 local _config = {}
 
-local M = {}
+local M = {
+  setup_called = false,
+}
 
 function M.focus()
   M.open()
@@ -102,7 +104,7 @@ local function update_base_dir_with_filepath(filepath, bufnr)
     end
   end
 
-  if not vim.startswith(filepath, core.get_explorer().cwd) then
+  if not vim.startswith(filepath, core.get_cwd()) then
     change_dir.fn(vim.fn.fnamemodify(filepath, ":p:h"))
   end
 end
@@ -298,13 +300,18 @@ local function setup_autocommands(opts)
   -- reset highlights when colorscheme is changed
   create_nvim_tree_autocmd("ColorScheme", { callback = M.reset_highlight })
 
-  if opts.auto_reload_on_write then
+  local has_watchers = opts.filesystem_watchers.enable
+
+  if opts.auto_reload_on_write and not has_watchers then
     create_nvim_tree_autocmd("BufWritePost", { callback = reloaders.reload_explorer })
   end
-  create_nvim_tree_autocmd("User", {
-    pattern = { "FugitiveChanged", "NeogitStatusRefreshed" },
-    callback = reloaders.reload_git,
-  })
+
+  if not has_watchers and opts.git.enable then
+    create_nvim_tree_autocmd("User", {
+      pattern = { "FugitiveChanged", "NeogitStatusRefreshed" },
+      callback = reloaders.reload_git,
+    })
+  end
 
   if opts.open_on_tab then
     create_nvim_tree_autocmd("TabEnter", { callback = M.tab_change })
@@ -337,13 +344,14 @@ local function setup_autocommands(opts)
     create_nvim_tree_autocmd({ "BufEnter", "BufNewFile" }, { callback = M.open_on_directory })
   end
 
-  if opts.reload_on_bufenter then
+  if opts.reload_on_bufenter and not has_watchers then
     create_nvim_tree_autocmd("BufEnter", { pattern = "NvimTree_*", callback = reloaders.reload_explorer })
   end
 end
 
 local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
   auto_reload_on_write = true,
+  create_in_closed_folder = false,
   disable_netrw = false,
   hijack_cursor = false,
   hijack_netrw = true,
@@ -355,7 +363,9 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
   sort_by = "name",
   update_cwd = false,
   reload_on_bufenter = false,
+  respect_buf_cwd = false,
   view = {
+    adaptive_size = false,
     width = 30,
     height = 30,
     hide_root_folder = false,
@@ -372,18 +382,57 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
     },
   },
   renderer = {
+    add_trailing = false,
+    group_empty = false,
+    highlight_git = false,
+    full_name = false,
+    highlight_opened_files = "none",
+    root_folder_modifier = ":~",
     indent_markers = {
       enable = false,
       icons = {
         corner = "└ ",
         edge = "│ ",
+        item = "│ ",
         none = "  ",
       },
     },
     icons = {
       webdev_colors = true,
       git_placement = "before",
+      padding = " ",
+      symlink_arrow = " ➛ ",
+      show = {
+        file = true,
+        folder = true,
+        folder_arrow = true,
+        git = true,
+      },
+      glyphs = {
+        default = "",
+        symlink = "",
+        folder = {
+          arrow_closed = "",
+          arrow_open = "",
+          default = "",
+          open = "",
+          empty = "",
+          empty_open = "",
+          symlink = "",
+          symlink_open = "",
+        },
+        git = {
+          unstaged = "✗",
+          staged = "✓",
+          unmerged = "",
+          renamed = "➜",
+          untracked = "★",
+          deleted = "",
+          ignored = "◌",
+        },
+      },
     },
+    special_files = { "Cargo.toml", "Makefile", "README.md", "readme.md" },
   },
   hijack_directories = {
     enable = true,
@@ -414,6 +463,10 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
     custom = {},
     exclude = {},
   },
+  filesystem_watchers = {
+    enable = false,
+    interval = 100,
+  },
   git = {
     enable = true,
     ignore = true,
@@ -425,6 +478,9 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
       enable = true,
       global = false,
       restrict_above_cwd = false,
+    },
+    expand_all = {
+      max_folder_discovery = 300,
     },
     open_file = {
       quit_on_open = false,
@@ -438,9 +494,12 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
         },
       },
     },
+    remove_file = {
+      close_window = true,
+    },
   },
   trash = {
-    cmd = "trash",
+    cmd = "gio trash",
     require_confirm = true,
   },
   live_filter = {
@@ -457,6 +516,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
       diagnostics = false,
       git = false,
       profile = false,
+      watcher = false,
     },
   },
 } -- END_DEFAULT_OPTS
@@ -516,6 +576,12 @@ function M.setup(conf)
     return
   end
 
+  if M.setup_called then
+    utils.warn "nvim-tree.lua setup called multiple times"
+    return
+  end
+  M.setup_called = true
+
   legacy.migrate_legacy_options(conf or {})
 
   validate_options(conf)
@@ -548,6 +614,9 @@ function M.setup(conf)
   require("nvim-tree.lib").setup(opts)
   require("nvim-tree.renderer").setup(opts)
   require("nvim-tree.live-filter").setup(opts)
+  if M.config.renderer.icons.show.file and pcall(require, "nvim-web-devicons") then
+    require("nvim-web-devicons").setup()
+  end
 
   setup_vim_commands()
   setup_autocommands(opts)
