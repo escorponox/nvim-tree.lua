@@ -3,7 +3,9 @@ local has_notify, notify = pcall(require, "notify")
 local a = vim.api
 local uv = vim.loop
 
-local M = {}
+local M = {
+  debouncers = {},
+}
 
 M.is_windows = vim.fn.has "win32" == 1 or vim.fn.has "win32unix" == 1
 
@@ -96,7 +98,8 @@ function M.get_user_input_char()
   return vim.fn.nr2char(c)
 end
 
--- get the node from the tree that matches the predicate
+-- get the node and index of the node from the tree that matches the predicate.
+-- The explored nodes are those displayed on the view.
 -- @param nodes list of node
 -- @param fn    function(node): boolean
 function M.find_node(nodes, fn)
@@ -124,6 +127,46 @@ function M.find_node(nodes, fn)
   i = require("nvim-tree.view").is_root_folder_visible() and i or i - 1
   i = require("nvim-tree.live-filter").filter and i + 1 or i
   return node, i
+end
+
+-- get the node in the tree state depending on the absolute path of the node
+-- (grouped or hidden too)
+function M.get_node_from_path(path)
+  local explorer = require("nvim-tree.core").get_explorer()
+  if explorer.absolute_path == path then
+    return explorer
+  end
+
+  local function iterate(nodes)
+    for _, node in pairs(nodes) do
+      if node.absolute_path == path or node.link_to == path then
+        return node
+      end
+      if node.nodes then
+        local res = iterate(node.nodes)
+        if res then
+          return res
+        end
+      end
+      if node.group_next then
+        local res = iterate { node.group_next }
+        if res then
+          return res
+        end
+      end
+    end
+  end
+
+  return iterate(explorer.nodes)
+end
+
+-- get the highest parent of grouped nodes
+function M.get_parent_of_group(node_)
+  local node = node_
+  while node.parent and node.parent.group_next do
+    node = node.parent
+  end
+  return node
 end
 
 -- return visible nodes indexed by line
@@ -205,15 +248,15 @@ end
 
 -- Create empty sub-tables if not present
 -- @param tbl to create empty inside of
--- @param sub dot separated string of sub-tables
+-- @param path dot separated string of sub-tables
 -- @return deepest sub-table
-function M.table_create_missing(tbl, sub)
+function M.table_create_missing(tbl, path)
   if tbl == nil then
     return nil
   end
 
   local t = tbl
-  for s in string.gmatch(sub, "([^%.]+)%.*") do
+  for s in string.gmatch(path, "([^%.]+)%.*") do
     if t[s] == nil then
       t[s] = {}
     end
@@ -221,6 +264,47 @@ function M.table_create_missing(tbl, sub)
   end
 
   return t
+end
+
+-- Move a value from src to dst if value is nil on dst
+-- @param src to copy from
+-- @param src_path dot separated string of sub-tables
+-- @param src_pos value pos
+-- @param dst to copy to
+-- @param dst_path dot separated string of sub-tables, created when missing
+-- @param dst_pos value pos
+function M.move_missing_val(src, src_path, src_pos, dst, dst_path, dst_pos)
+  local ok, err = pcall(vim.validate, {
+    src = { src, "table" },
+    src_path = { src_path, "string" },
+    src_pos = { src_pos, "string" },
+    dst = { dst, "table" },
+    dst_path = { dst_path, "string" },
+    dst_pos = { dst_pos, "string" },
+  })
+  if not ok then
+    M.warn("move_missing_val: " .. (err or "invalid arguments"))
+  end
+
+  for pos in string.gmatch(src_path, "([^%.]+)%.*") do
+    if src[pos] and type(src[pos]) == "table" then
+      src = src[pos]
+    else
+      src = nil
+      break
+    end
+  end
+  local src_val = src and src[src_pos]
+  if src_val == nil then
+    return
+  end
+
+  dst = M.table_create_missing(dst, dst_path)
+  if dst[dst_pos] == nil then
+    dst[dst_pos] = src_val
+  end
+
+  src[src_pos] = nil
 end
 
 function M.format_bytes(bytes)
@@ -244,6 +328,27 @@ function M.key_by(tbl, key)
     keyed[val[key]] = val
   end
   return keyed
+end
+
+---Execute callback timeout ms after the lastest invocation with context. Waiting invocations for that context will be discarded. Caller should this ensure that callback performs the same or functionally equivalent actions.
+---@param context string identifies the callback to debounce
+---@param timeout number ms to wait
+---@param callback function to execute on completion
+function M.debounce(context, timeout, callback)
+  if M.debouncers[context] then
+    pcall(uv.close, M.debouncers[context])
+  end
+
+  M.debouncers[context] = uv.new_timer()
+  M.debouncers[context]:start(
+    timeout,
+    0,
+    vim.schedule_wrap(function()
+      M.debouncers[context]:close()
+      M.debouncers[context] = nil
+      callback()
+    end)
+  )
 end
 
 return M
