@@ -1,4 +1,3 @@
-local api = vim.api
 local uv = vim.loop
 
 local utils = require "nvim-tree.utils"
@@ -23,7 +22,7 @@ function M.reload(node, status)
   local cwd = node.link_to or node.absolute_path
   local handle = uv.fs_scandir(cwd)
   if type(handle) == "string" then
-    api.nvim_err_writeln(handle)
+    utils.notify.error(handle)
     return
   end
 
@@ -63,13 +62,22 @@ function M.reload(node, status)
           end
         end
       end
+      local n = nodes_by_path[abs]
+      if n then
+        n.executable = builders.is_executable(abs, n.extension or "")
+      end
     end
   end
 
   node.nodes = vim.tbl_map(
     update_status(nodes_by_path, node_ignored, status),
     vim.tbl_filter(function(n)
-      return child_names[n.absolute_path]
+      if child_names[n.absolute_path] then
+        return child_names[n.absolute_path]
+      else
+        common.node_destroy(n)
+        return nil
+      end
     end, node.nodes)
   )
 

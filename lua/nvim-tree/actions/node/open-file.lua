@@ -21,6 +21,14 @@ local function get_split_cmd()
   return "top"
 end
 
+local function get_user_input_char()
+  local c = vim.fn.getchar()
+  while type(c) ~= "number" do
+    c = vim.fn.getchar()
+  end
+  return vim.fn.nr2char(c)
+end
+
 ---Get user to pick a window. Selectable windows are all windows in the current
 ---tabpage that aren't NvimTree.
 ---@return integer|nil -- If a valid window was picked, return its id. If an
@@ -102,7 +110,7 @@ local function pick_window()
   if vim.opt.cmdheight._value ~= 0 then
     print "Pick window: "
   end
-  local _, resp = pcall(utils.get_user_input_char)
+  local _, resp = pcall(get_user_input_char)
   resp = (resp or ""):upper()
   utils.clear_prompt()
 
@@ -220,17 +228,6 @@ local function open_in_new_window(filename, mode, win_ids)
   lib.set_target_win()
 end
 
-local function is_already_open(filename, win_ids)
-  for _, id in ipairs(win_ids) do
-    if filename == api.nvim_buf_get_name(api.nvim_win_get_buf(id)) then
-      api.nvim_set_current_win(id)
-      return true
-    end
-  end
-
-  return false
-end
-
 local function is_already_loaded(filename)
   for _, buf_id in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf_id) and filename == api.nvim_buf_get_name(buf_id) then
@@ -258,13 +255,15 @@ function M.fn(mode, filename)
   local win_ids = api.nvim_tabpage_list_wins(tabpage)
   local buf_loaded = is_already_loaded(filename)
 
-  local found = is_already_open(filename, win_ids)
-  if found and mode == "preview" then
+  local found_win = utils.get_win_buf_from_path(filename)
+  if found_win and mode == "preview" then
     return
   end
 
-  if not found then
+  if not found_win then
     open_in_new_window(filename, mode, win_ids)
+  else
+    api.nvim_set_current_win(found_win)
   end
 
   if M.resize_window then

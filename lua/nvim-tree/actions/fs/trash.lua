@@ -41,7 +41,13 @@ function M.fn(node)
       M.config.trash.require_confirm = true
     end
   else
-    utils.warn "Trash is currently a UNIX only feature!"
+    utils.notify.warn "Trash is currently a UNIX only feature!"
+    return
+  end
+
+  local binary = M.config.trash.cmd:gsub(" .*$", "")
+  if vim.fn.executable(binary) == 0 then
+    utils.notify.warn(binary .. " is not executable.")
     return
   end
 
@@ -59,45 +65,42 @@ function M.fn(node)
     })
   end
 
-  local is_confirmed = true
-
-  -- confirmation prompt
-  if M.config.trash.require_confirm then
-    is_confirmed = false
-    print("Trash " .. node.name .. " ? y/n")
-    local ans = utils.get_user_input_char()
-    if ans:match "^y" then
-      is_confirmed = true
-    end
-    utils.clear_prompt()
-  end
-
-  -- trashing
-  if is_confirmed then
+  local function do_trash()
     if node.nodes ~= nil and not node.link_to then
       trash_path(function(_, rc)
         if rc ~= 0 then
-          utils.warn("trash failed: " .. err_msg .. "; please see :help nvim-tree.trash")
+          utils.notify.warn("trash failed: " .. err_msg .. "; please see :help nvim-tree.trash")
           return
         end
         events._dispatch_folder_removed(node.absolute_path)
         if M.enable_reload then
-          require("nvim-tree.actions.reloaders").reload_explorer()
+          require("nvim-tree.actions.reloaders.reloaders").reload_explorer()
         end
       end)
     else
       trash_path(function(_, rc)
         if rc ~= 0 then
-          utils.warn("trash failed: " .. err_msg .. "; please see :help nvim-tree.trash")
+          utils.notify.warn("trash failed: " .. err_msg .. "; please see :help nvim-tree.trash")
           return
         end
         events._dispatch_file_removed(node.absolute_path)
         clear_buffer(node.absolute_path)
         if M.enable_reload then
-          require("nvim-tree.actions.reloaders").reload_explorer()
+          require("nvim-tree.actions.reloaders.reloaders").reload_explorer()
         end
       end)
     end
+  end
+
+  if M.config.trash.require_confirm then
+    vim.ui.input({ prompt = "Trash " .. node.name .. " ? y/n: " }, function(choice)
+      utils.clear_prompt()
+      if choice == "y" then
+        do_trash()
+      end
+    end)
+  else
+    do_trash()
   end
 end
 

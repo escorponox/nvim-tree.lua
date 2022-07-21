@@ -4,6 +4,12 @@ local M = {}
 
 local events = require "nvim-tree.events"
 
+local function get_win_sep_hl()
+  -- #1221 WinSeparator not present in nvim 0.6.1 and some builds of 0.7.0
+  local has_win_sep = pcall(vim.cmd, "silent hi WinSeparator")
+  return has_win_sep and "WinSeparator:NvimTreeWinSeparator" or "VertSplit:NvimTreeWinSeparator"
+end
+
 M.View = {
   adaptive_size = false,
   centralize_selection = false,
@@ -29,8 +35,7 @@ M.View = {
       "EndOfBuffer:NvimTreeEndOfBuffer",
       "Normal:NvimTreeNormal",
       "CursorLine:NvimTreeCursorLine",
-      -- #1221 WinSeparator not present in nvim 0.6.1 and some builds of 0.7.0
-      pcall(vim.cmd, "silent hi WinSeparator") and "WinSeparator:NvimTreeWinSeparator" or "VertSplit:NvimTreeWinSeparator",
+      get_win_sep_hl(),
       "StatusLine:NvimTreeStatusLine",
       "StatusLineNC:NvimTreeStatuslineNC",
       "SignColumn:NvimTreeSignColumn",
@@ -71,7 +76,7 @@ end
 local function wipe_rogue_buffer()
   for _, bufnr in ipairs(a.nvim_list_bufs()) do
     if not matches_bufnr(bufnr) and a.nvim_buf_get_name(bufnr):match "NvimTree" ~= nil then
-      return pcall(a.nvim_buf_delete, bufnr, { force = true })
+      pcall(a.nvim_buf_delete, bufnr, { force = true })
     end
   end
 end
@@ -206,8 +211,9 @@ local function grow()
   local lines = vim.api.nvim_buf_get_lines(M.get_bufnr(), starts_at, -1, false)
   local max_length = M.View.initial_width
   for _, l in pairs(lines) do
-    if max_length < #l then
-      max_length = #l
+    local count = vim.fn.strchars(l) + 3 -- plus some padding
+    if max_length < count then
+      max_length = count
     end
   end
   M.resize(max_length)
@@ -244,11 +250,14 @@ function M.resize(size)
     return
   end
 
+  local new_size = get_size()
   if M.is_vertical() then
-    a.nvim_win_set_width(M.get_winnr(), get_size())
+    a.nvim_win_set_width(M.get_winnr(), new_size)
   else
-    a.nvim_win_set_height(M.get_winnr(), get_size())
+    a.nvim_win_set_height(M.get_winnr(), new_size)
   end
+
+  events._dispatch_on_tree_resize(new_size)
 
   if not M.View.preserve_window_proportions then
     vim.cmd ":wincmd ="
@@ -282,11 +291,6 @@ function M.abandon_current_window()
   local tab = a.nvim_get_current_tabpage()
   BUFNR_PER_TAB[tab] = nil
   M.View.tabpages[tab].winnr = nil
-end
-
-function M.quit_on_open()
-  M._prevent_buffer_override()
-  M.abandon_current_window()
 end
 
 function M.is_visible(opts)
@@ -400,8 +404,8 @@ function M._prevent_buffer_override()
     vim.cmd "setlocal nowinfixheight"
     M.open { focus_tree = false }
     require("nvim-tree.renderer").draw()
-    a.nvim_win_close(curwin, { force = true })
-    require("nvim-tree.actions.open-file").fn("edit", bufname)
+    pcall(a.nvim_win_close, curwin, { force = true })
+    require("nvim-tree.actions.node.open-file").fn("edit", bufname)
   end)
 end
 

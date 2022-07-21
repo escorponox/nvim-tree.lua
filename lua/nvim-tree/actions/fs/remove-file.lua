@@ -36,7 +36,7 @@ end
 local function remove_dir(cwd)
   local handle = luv.fs_scandir(cwd)
   if type(handle) == "string" then
-    return a.nvim_err_writeln(handle)
+    return utils.notify.error(handle)
   end
 
   while true do
@@ -68,28 +68,29 @@ function M.fn(node)
     return
   end
 
-  print("Remove " .. node.name .. " ? y/n")
-  local ans = utils.get_user_input_char()
-  utils.clear_prompt()
-  if ans:match "^y" then
-    if node.nodes ~= nil and not node.link_to then
-      local success = remove_dir(node.absolute_path)
-      if not success then
-        return a.nvim_err_writeln("Could not remove " .. node.name)
+  vim.ui.input({ prompt = "Remove " .. node.name .. " ? y/n: " }, function(choice)
+    utils.clear_prompt()
+    if choice == "y" then
+      if node.nodes ~= nil and not node.link_to then
+        local success = remove_dir(node.absolute_path)
+        if not success then
+          return utils.notify.error("Could not remove " .. node.name)
+        end
+        events._dispatch_folder_removed(node.absolute_path)
+      else
+        local success = luv.fs_unlink(node.absolute_path)
+        if not success then
+          return utils.notify.error("Could not remove " .. node.name)
+        end
+        events._dispatch_file_removed(node.absolute_path)
+        clear_buffer(node.absolute_path)
       end
-      events._dispatch_folder_removed(node.absolute_path)
-    else
-      local success = luv.fs_unlink(node.absolute_path)
-      if not success then
-        return a.nvim_err_writeln("Could not remove " .. node.name)
+      utils.notify.info(node.absolute_path .. " was properly removed.")
+      if M.enable_reload then
+        require("nvim-tree.actions.reloaders.reloaders").reload_explorer()
       end
-      events._dispatch_file_removed(node.absolute_path)
-      clear_buffer(node.absolute_path)
     end
-    if M.enable_reload then
-      require("nvim-tree.actions.reloaders").reload_explorer()
-    end
-  end
+  end)
 end
 
 function M.setup(opts)

@@ -1,3 +1,5 @@
+local utils = require "nvim-tree.utils"
+
 local M = {}
 
 local global_handlers = {}
@@ -11,6 +13,7 @@ local Event = {
   FileRemoved = "FileRemoved",
   FolderCreated = "FolderCreated",
   FolderRemoved = "FolderRemoved",
+  Resize = "Resize",
 }
 
 local function get_handlers(event_name)
@@ -27,7 +30,7 @@ local function dispatch(event_name, payload)
   for _, handler in pairs(get_handlers(event_name)) do
     local success, error = pcall(handler, payload)
     if not success then
-      vim.api.nvim_err_writeln("Handler for event " .. event_name .. " errored. " .. vim.inspect(error))
+      utils.notify.error("Handler for event " .. event_name .. " errored. " .. vim.inspect(error))
     end
   end
 end
@@ -70,6 +73,11 @@ end
 --@private
 function M._dispatch_on_tree_close()
   dispatch(Event.TreeClose, nil)
+end
+
+--@private
+function M._dispatch_on_tree_resize(size)
+  dispatch(Event.Resize, size)
 end
 
 --Registers a handler for the Ready event.
@@ -124,6 +132,12 @@ end
 --@param handler (function) Handler with the signature function(payload)
 function M.on_tree_close(handler)
   register_handler(Event.TreeClose, handler)
+end
+
+--Registers a handler for the Resize event.
+--@param handler (function) Handler with the signature function(size)
+function M.on_tree_resize(handler)
+  register_handler(Event.Resize, handler)
 end
 
 return M

@@ -7,12 +7,12 @@ local colors = require "nvim-tree.colors"
 local renderer = require "nvim-tree.renderer"
 local view = require "nvim-tree.view"
 local utils = require "nvim-tree.utils"
-local change_dir = require "nvim-tree.actions.change-dir"
+local change_dir = require "nvim-tree.actions.root.change-dir"
 local legacy = require "nvim-tree.legacy"
 local core = require "nvim-tree.core"
-local reloaders = require "nvim-tree.actions.reloaders"
-local copy_paste = require "nvim-tree.actions.copy-paste"
-local collapse_all = require "nvim-tree.actions.collapse-all"
+local reloaders = require "nvim-tree.actions.reloaders.reloaders"
+local copy_paste = require "nvim-tree.actions.fs.copy-paste"
+local collapse_all = require "nvim-tree.actions.tree-modifiers.collapse-all"
 local git = require "nvim-tree.git"
 
 local _config = {}
@@ -69,7 +69,7 @@ function M.change_root(filepath, bufnr)
 end
 
 ---@deprecated
-M.on_keypress = require("nvim-tree.actions").on_keypress
+M.on_keypress = require("nvim-tree.actions.dispatch").dispatch
 
 function M.toggle(find_file, no_focus, cwd)
   if view.is_visible() then
@@ -116,7 +116,7 @@ function M.open_replacing_current_buffer(cwd)
   end
   view.open_in_current_win { hijack_current_buf = false, resize = false }
   require("nvim-tree.renderer").draw()
-  require("nvim-tree.actions.find-file").fn(bufname)
+  require("nvim-tree.actions.finders.find-file").fn(bufname)
 end
 
 function M.tab_change()
@@ -148,6 +148,9 @@ function M.find_file(with_open, bufnr, bang)
   end
 
   bufnr = bufnr or api.nvim_get_current_buf()
+  if not api.nvim_buf_is_valid(bufnr) then
+    return
+  end
   local bufname = api.nvim_buf_get_name(bufnr)
   local filepath = utils.canonical_path(vim.fn.fnamemodify(bufname, ":p"))
   if not is_file_readable(filepath) then
@@ -163,7 +166,7 @@ function M.find_file(with_open, bufnr, bang)
     if bang or _config.update_focused_file.update_root then
       M.change_root(filepath, bufnr)
     end
-    require("nvim-tree.actions.find-file").fn(filepath)
+    require("nvim-tree.actions.finders.find-file").fn(filepath)
   end)
 end
 
@@ -293,26 +296,26 @@ local function setup_vim_commands()
   api.nvim_create_user_command("NvimTreeOpen", function(res)
     M.open(res.args)
   end, { nargs = "?", complete = "dir" })
-  api.nvim_create_user_command("NvimTreeClose", view.close, {})
+  api.nvim_create_user_command("NvimTreeClose", view.close, { bar = true })
   api.nvim_create_user_command("NvimTreeToggle", function(res)
     M.toggle(false, false, res.args)
   end, { nargs = "?", complete = "dir" })
-  api.nvim_create_user_command("NvimTreeFocus", M.focus, {})
-  api.nvim_create_user_command("NvimTreeRefresh", reloaders.reload_explorer, {})
-  api.nvim_create_user_command("NvimTreeClipboard", copy_paste.print_clipboard, {})
+  api.nvim_create_user_command("NvimTreeFocus", M.focus, { bar = true })
+  api.nvim_create_user_command("NvimTreeRefresh", reloaders.reload_explorer, { bar = true })
+  api.nvim_create_user_command("NvimTreeClipboard", copy_paste.print_clipboard, { bar = true })
   api.nvim_create_user_command("NvimTreeFindFile", function(res)
     M.find_file(true, nil, res.bang)
-  end, { bang = true })
+  end, { bang = true, bar = true })
   api.nvim_create_user_command("NvimTreeFindFileToggle", function(res)
     M.toggle(true, false, res.args)
   end, { nargs = "?", complete = "dir" })
   api.nvim_create_user_command("NvimTreeResize", function(res)
     M.resize(res.args)
-  end, { nargs = 1 })
-  api.nvim_create_user_command("NvimTreeCollapse", collapse_all.fn, {})
+  end, { nargs = 1, bar = true })
+  api.nvim_create_user_command("NvimTreeCollapse", collapse_all.fn, { bar = true })
   api.nvim_create_user_command("NvimTreeCollapseKeepBuffers", function()
     collapse_all.fn(true)
-  end, {})
+  end, { bar = true })
 end
 
 function M.change_dir(name)
@@ -370,7 +373,7 @@ local function setup_autocommands(opts)
   if not opts.actions.open_file.quit_on_open then
     create_nvim_tree_autocmd("BufWipeout", { pattern = "NvimTree_*", callback = view._prevent_buffer_override })
   else
-    create_nvim_tree_autocmd("BufWipeout", { pattern = "NvimTree_*", callback = view.quit_on_open })
+    create_nvim_tree_autocmd("BufWipeout", { pattern = "NvimTree_*", callback = view.abandon_current_window })
   end
 
   if opts.hijack_directories.enable then
@@ -395,11 +398,17 @@ local function setup_autocommands(opts)
 
   if opts.diagnostics.enable then
     create_nvim_tree_autocmd("DiagnosticChanged", {
-      callback = require("nvim-tree.diagnostics").update,
+      callback = function()
+        log.line("diagnostics", "DiagnosticChanged")
+        require("nvim-tree.diagnostics").update()
+      end,
     })
     create_nvim_tree_autocmd("User", {
       pattern = "CocDiagnosticChange",
-      callback = require("nvim-tree.diagnostics").update,
+      callback = function()
+        log.line("diagnostics", "CocDiagnosticChange")
+        require("nvim-tree.diagnostics").update()
+      end,
     })
   end
 end
@@ -449,10 +458,10 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
     indent_markers = {
       enable = false,
       icons = {
-        corner = "└ ",
-        edge = "│ ",
-        item = "│ ",
-        none = "  ",
+        corner = "└",
+        edge = "│",
+        item = "│",
+        none = " ",
       },
     },
     icons = {
@@ -469,6 +478,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
       glyphs = {
         default = "",
         symlink = "",
+        bookmark = "",
         folder = {
           arrow_closed = "",
           arrow_open = "",
@@ -491,6 +501,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
       },
     },
     special_files = { "Cargo.toml", "Makefile", "README.md", "readme.md" },
+    symlink_destination = true,
   },
   hijack_directories = {
     enable = true,
@@ -509,6 +520,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
   diagnostics = {
     enable = false,
     show_on_dirs = false,
+    debounce_delay = 50,
     icons = {
       hint = "",
       info = "",
@@ -523,12 +535,12 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
   },
   filesystem_watchers = {
     enable = false,
-    interval = 100,
     debounce_delay = 50,
   },
   git = {
     enable = true,
     ignore = true,
+    show_on_dirs = true,
     timeout = 400,
   },
   actions = {
@@ -540,6 +552,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
     },
     expand_all = {
       max_folder_discovery = 300,
+      exclude = {},
     },
     open_file = {
       quit_on_open = false,
@@ -572,6 +585,7 @@ local DEFAULT_OPTS = { -- BEGIN_DEFAULT_OPTS
       all = false,
       config = false,
       copy_paste = false,
+      dev = false,
       diagnostics = false,
       git = false,
       profile = false,
@@ -625,13 +639,13 @@ local function validate_options(conf)
   validate(conf, DEFAULT_OPTS, "")
 
   if msg then
-    utils.warn(msg)
+    utils.notify.warn(msg .. " | see :help nvim-tree-setup for available configuration options")
   end
 end
 
 function M.setup(conf)
   if vim.fn.has "nvim-0.7" == 0 then
-    utils.warn "nvim-tree.lua requires Neovim 0.7 or higher"
+    utils.notify.warn "nvim-tree.lua requires Neovim 0.7 or higher"
     return
   end
 
@@ -671,6 +685,7 @@ function M.setup(conf)
   require("nvim-tree.lib").setup(opts)
   require("nvim-tree.renderer").setup(opts)
   require("nvim-tree.live-filter").setup(opts)
+  require("nvim-tree.marks").setup(opts)
   if M.config.renderer.icons.show.file and pcall(require, "nvim-web-devicons") then
     require("nvim-web-devicons").setup()
   end

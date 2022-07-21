@@ -3,6 +3,7 @@ local utils = require "nvim-tree.utils"
 local git_utils = require "nvim-tree.git.utils"
 local Runner = require "nvim-tree.git.runner"
 local Watcher = require("nvim-tree.watcher").Watcher
+local Iterator = require "nvim-tree.iterators.node-iterator"
 
 local M = {
   config = {},
@@ -28,8 +29,8 @@ function M.reload_project(project_root, path)
     return
   end
 
-  if path and not path:match("^" .. project_root) then
-    path = nil
+  if path and path:find(project_root, 1, true) ~= 1 then
+    return
   end
 
   local git_status = Runner.run {
@@ -42,7 +43,7 @@ function M.reload_project(project_root, path)
 
   if path then
     for p in pairs(project.files) do
-      if p:match("^" .. path) then
+      if p:find(path, 1, true) == 1 then
         project.files[p] = nil
       end
     end
@@ -67,11 +68,18 @@ function M.get_project_root(cwd)
     return nil
   end
 
-  local project_root = git_utils.get_toplevel(cwd)
-  return project_root
+  if M.config.git.enable then
+    return git_utils.get_toplevel(cwd)
+  end
+
+  return nil
 end
 
 local function reload_tree_at(project_root)
+  if not M.config.git.enable then
+    return nil
+  end
+
   log.line("watcher", "git event executing '%s'", project_root)
   local root_node = utils.get_node_from_path(project_root)
   if not root_node then
@@ -84,21 +92,19 @@ local function reload_tree_at(project_root)
   local project_files = project.files and project.files or {}
   local project_dirs = project.dirs and project.dirs or {}
 
-  local function iterate(n)
-    local parent_ignored = n.git_status == "!!"
-    for _, node in pairs(n.nodes) do
+  Iterator.builder(root_node.nodes)
+    :hidden()
+    :applier(function(node)
+      local parent_ignored = node.parent.git_status == "!!"
       node.git_status = project_dirs[node.absolute_path] or project_files[node.absolute_path]
       if not node.git_status and parent_ignored then
         node.git_status = "!!"
       end
-
-      if node.nodes and #node.nodes > 0 then
-        iterate(node)
-      end
-    end
-  end
-
-  iterate(root_node)
+    end)
+    :recursor(function(node)
+      return node.nodes and #node.nodes > 0 and node.nodes
+    end)
+    :iterate()
 
   require("nvim-tree.renderer").draw()
 end
@@ -132,16 +138,11 @@ function M.load_project_status(cwd)
     watcher = Watcher.new {
       absolute_path = utils.path_join { project_root, ".git" },
       project_root = project_root,
-      interval = M.config.filesystem_watchers.interval,
       on_event = function(opts)
         log.line("watcher", "git event scheduled '%s'", opts.project_root)
         utils.debounce("git:watcher:" .. opts.project_root, M.config.filesystem_watchers.debounce_delay, function()
           reload_tree_at(opts.project_root)
         end)
-      end,
-      on_event0 = function()
-        log.line("watcher", "git event")
-        M.reload_tree_at(project_root)
       end,
     }
   end

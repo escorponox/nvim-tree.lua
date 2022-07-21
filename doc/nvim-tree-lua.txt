@@ -14,6 +14,7 @@ CONTENTS                                                           *nvim-tree*
   6. Highlight Groups                         |nvim-tree-highlight|
   7. Events                                   |nvim-tree-events|
   7.1 Available Events                        |nvim-tree.events|
+  8. Bookmarks                                |nvim-tree-bookmarks|
 
 ==============================================================================
  1. INTRODUCTION                                      *nvim-tree-introduction*
@@ -30,11 +31,15 @@ Features
 
 File Icons
 
-    See https://github.com/kyazdani42/nvim-web-devicons
-    Requires a patched font.
+    https://github.com/kyazdani42/nvim-web-devicons is optional and used to display file icons. It requires a patched font: https://www.nerdfonts.com
+
      should look like an open folder.
 
-    Syntax highlighting uses g:terminal_color_ from colorschemes, fallbacks to
+    To disable the display of icons see |renderer.icons.show|
+
+Colours
+
+    Syntax highlighting uses g:terminal_color_ from colorschemes, falls back to
     ugly colors otherwise.
 
 Git Integration
@@ -196,10 +201,10 @@ Subsequent calls to setup will replace the previous configuration.
         indent_markers = {
           enable = false,
           icons = {
-            corner = "└ ",
-            edge = "│ ",
-            item = "│ ",
-            none = "  ",
+            corner = "└",
+            edge = "│",
+            item = "│",
+            none = " ",
           },
         },
         icons = {
@@ -216,6 +221,7 @@ Subsequent calls to setup will replace the previous configuration.
           glyphs = {
             default = "",
             symlink = "",
+            bookmark = "",
             folder = {
               arrow_closed = "",
               arrow_open = "",
@@ -238,6 +244,7 @@ Subsequent calls to setup will replace the previous configuration.
           },
         },
         special_files = { "Cargo.toml", "Makefile", "README.md", "readme.md" },
+        symlink_destination = true,
       },
       hijack_directories = {
         enable = true,
@@ -256,6 +263,7 @@ Subsequent calls to setup will replace the previous configuration.
       diagnostics = {
         enable = false,
         show_on_dirs = false,
+        debounce_delay = 50,
         icons = {
           hint = "",
           info = "",
@@ -270,12 +278,12 @@ Subsequent calls to setup will replace the previous configuration.
       },
       filesystem_watchers = {
         enable = false,
-        interval = 100,
         debounce_delay = 50,
       },
       git = {
         enable = true,
         ignore = true,
+        show_on_dirs = true,
         timeout = 400,
       },
       actions = {
@@ -287,6 +295,7 @@ Subsequent calls to setup will replace the previous configuration.
         },
         expand_all = {
           max_folder_discovery = 300,
+          exclude = {},
         },
         open_file = {
           quit_on_open = false,
@@ -319,6 +328,7 @@ Subsequent calls to setup will replace the previous configuration.
           all = false,
           config = false,
           copy_paste = false,
+          dev = false,
           diagnostics = false,
           git = false,
           profile = false,
@@ -462,9 +472,12 @@ Show LSP and COC diagnostics in the signcolumn
     Enable/disable the feature.
       Type: `boolean`, Default: `false`
 
+    *nvim-tree.diagnostics.debounce_delay*
+    Idle milliseconds between diagnostic event and update.
+      Type: `number`, Default: `50` (ms)
+
     *nvim-tree.diagnostics.show_on_dirs*
-    If the node with diagnostic is not visible, then show diagnostic in the
-    parent directory.
+    Show diagnostic icons on parent directories.
       Type: `boolean`, Default: `false`
 
     *nvim-tree.diagnostics.icons*
@@ -490,6 +503,10 @@ Git integration with icons and colors.
     Toggle via the `toggle_git_ignored` action, default mapping `I`.
       Type: `boolean`, Default: `true`
 
+    *nvim-tree.git.show_on_dirs*
+    Show status icons of children when directory itself has no status icon.
+      Type: `boolean`, Default: `true`
+
     *nvim-tree.git.timeout*
     Kills the git process after some time if it takes too long.
       Type: `number`, Default: `400` (ms)
@@ -505,7 +522,7 @@ Git integration with icons and colors.
   process returned the data.
 
 *nvim-tree.filesystem_watchers*
-Will use file system watcher (libuv fs_poll) to watch the filesystem for
+Will use file system watcher (libuv fs_event) to watch the filesystem for
 changes.
 Using this will disable BufEnter / BufWritePost events in nvim-tree which
 were used to update the whole tree. With this feature, the tree will be
@@ -516,12 +533,6 @@ This will be experimental for a few weeks and will become the default.
     *nvim-tree.filesystem_watchers.enable*
     Enable / disable the feature.
       Type: `boolean`, Default: `false`
-
-    *nvim-tree.filesystem_watchers.interval*
-    Milliseconds between polls for each directory.
-    Increase to at least 1000ms if changes are not visible. See
-    https://github.com/luvit/luv/blob/master/docs.md#uvfs_poll_startfs_poll-path-interval-callback
-      Type: `number`, Default: `100` (ms)
 
     *nvim-tree.filesystem_watchers.debounce_delay*
     Idle milliseconds between filesystem change and action.
@@ -632,7 +643,7 @@ UI rendering setup
 
         *nvim-tree.renderer.indent_markers.icons*
         Icons shown before the file/directory.
-          Type: `table`, Default: `{ corner = "└ ", edge = "│ ", item = "│ ", none = "  ", }`
+          Type: `table`, Default: `{ corner = "└", edge = "│", item = "│", none = " ", }`
 
     *nvim-tree.renderer.icons*
     Configuration options for icons.
@@ -669,8 +680,8 @@ UI rendering setup
               Type: `boolean`, Default: `true`
 
             *nvim-tree.renderer.icons.show.folder_arrow*
-            Show a small arrow before the folder icon.
-            Requires |renderer.icons.show.folder| `= true` and |renderer.indent_markers.enable| `= false`
+            Show a small arrow before the folder node. Arrow will be a part of the
+            node when using |renderer.indent_markers|.
               Type: `boolean`, Default: `true`
 
             *nvim-tree.renderer.icons.show.git*
@@ -719,6 +730,10 @@ UI rendering setup
     *nvim-tree.renderer.special_files*
     A list of filenames that gets highlighted with `NvimTreeSpecialFile`.
       Type: `table`, Default: `{ "Cargo.toml", "Makefile", "README.md", "readme.md", }`
+
+    *nvim-tree.renderer.symlink_destination*
+    Whether to show the destination of the symlink.
+      Type: `boolean`, Default: `true`
 
 *nvim-tree.filters*
 Filtering options.
@@ -770,10 +785,18 @@ Configuration for various actions.
         Restrict changing to a directory above the global current working directory.
           Type: `boolean`, Default: `false`
 
-    *nvim-tree.actions.expand_all.max_folder_discovery*
-    Limit the number of folders being explored when expanding every folders.
-    Avoids hanging neovim when running this action on very large folders.
-      Type: `number`, Default: `300`
+    *nvim-tree.actions.expand_all*
+    Configuration for expand_all behaviour.
+
+        *nvim-tree.actions.expand_all.max_folder_discovery*
+        Limit the number of folders being explored when expanding every folders.
+        Avoids hanging neovim when running this action on very large folders.
+          Type: `number`, Default: `300`
+
+        *nvim-tree.actions.expand_all.exclude*
+        A list of directories that should not be expanded automatically.
+        E.g `{ ".git", "target", "build" }` etc.
+          Type: `table`, Default: `{}`
 
     *nvim-tree.actions.open_file*
     Configuration options for opening a file from nvim-tree.
@@ -862,6 +885,10 @@ Configuration for diagnostic logging.
 
         *nvim-tree.log.types.copy_paste*
         File copy and paste actions.
+          Type: `boolean`, Default: `false`
+
+        *nvim-tree.log.types.dev*
+        Used for local development only. Not useful for users.
           Type: `boolean`, Default: `false`
 
         *nvim-tree.log.types.diagnostics*
@@ -975,7 +1002,9 @@ DEFAULT MAPPINGS                                     *nvim-tree-default-mappings
 `y`               copy_name           copy name to system clipboard
 `Y`               copy_path           copy relative path to system clipboard
 `gy`              copy_absolute_path  copy absolute path to system clipboard
+`[e`              prev_diag_item      go to next diagnostic item
 `[c`              prev_git_item       go to next git item
+`]e`              next_diag_item      go to prev diagnostic item
 `]c`              next_git_item       go to prev git item
 `-`               dir_up              navigate up to the parent directory of the current file/directory
 `s`               system_open         open a file with default system application or a folder with default file manager, using |system_open| option
@@ -988,6 +1017,8 @@ DEFAULT MAPPINGS                                     *nvim-tree-default-mappings
 `.`               run_file_command    enter vim command mode with the file the cursor is on
 `<C-k>`           toggle_file_info    toggle a popup with file infos about the file under the cursor
 `g?`              toggle_help         toggle help
+`m`               toggle_mark         Toggle node in bookmarks
+`bmv`             bulk_move           Move all bookmarked nodes into specified location
 
 >
   view.mappings.list = { -- BEGIN_DEFAULT_MAPPINGS
@@ -1020,7 +1051,9 @@ DEFAULT MAPPINGS                                     *nvim-tree-default-mappings
     { key = "y",                              action = "copy_name" }
     { key = "Y",                              action = "copy_path" }
     { key = "gy",                             action = "copy_absolute_path" }
+    { key = "[e",                             action = "prev_diag_item" }
     { key = "[c",                             action = "prev_git_item" }
+    { key = "]e",                             action = "next_diag_item" }
     { key = "]c",                             action = "next_git_item" }
     { key = "-",                              action = "dir_up" }
     { key = "s",                              action = "system_open" }
@@ -1033,6 +1066,8 @@ DEFAULT MAPPINGS                                     *nvim-tree-default-mappings
     { key = ".",                              action = "run_file_command" }
     { key = "<C-k>",                          action = "toggle_file_info" }
     { key = "g?",                             action = "toggle_help" }
+    { key = "m",                              action = "toggle_mark" }
+    { key = "bmv",                            action = "bulk_move" }
   } -- END_DEFAULT_MAPPINGS
 <
 ==============================================================================
@@ -1103,6 +1138,11 @@ There are 2 highlight groups for the live filter feature
 
 NvimTreeLiveFilterPrefix
 NvimTreeLiveFilterValue
+
+Color of the bookmark icon
+
+NvimTreeBookmark
+
 
 ==============================================================================
  7. EVENTS                                                  *nvim-tree-events*
@@ -1210,5 +1250,35 @@ on_tree_close({handler})
                 Parameters: ~
                   {handler}      `{function}` Handler function, with the
                                  signature `function()`.
+
+                                   *nvim-tree.events.on_tree_resize()*
+on_tree_resize({handler})
+                Registers a handler for when NvimTree is resized.
+
+                Parameters: ~
+                  {handler}      `{function}` Handler function, with the
+                                 signature `function(size)`.
+
+==============================================================================
+ 8. BOOKMARKS                                      *nvim-tree-bookmarks*
+
+You can toggle marks on files/folders with
+`require("nvim-tree.marks").toggle_mark(node)` which is bound to `m` by
+default.
+
+To get the list of marked paths, you can call
+`require("nvim-tree.marks").get_marks()`. This will return `{node}`.
+
+*nvim-tree.bookmarks.navigation*
+
+Navigation for marks is not bound by default in nvim-tree because we don't
+want to focus the tree view each time we wish to switch to another mark.
+
+This requires binding bookmark navigation yourself.
+
+-- in your lua configuration
+vim.keymap.set("n", "<leader>mn", require("nvim-tree.marks.navigation").next)
+vim.keymap.set("n", "<leader>mp", require("nvim-tree.marks.navigation").prev)
+vim.keymap.set("n", "<leader>ms", require("nvim-tree.marks.navigation").select)
 
  vim:tw=78:ts=4:sw=4:et:ft=help:norl:
